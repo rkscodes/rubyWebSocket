@@ -2,6 +2,7 @@ require 'socket' # Provides TCPServer and TCPSocket classes
 require 'digest/sha1'
 
 server = TCPServer.new('localhost', 2345)
+magic_string = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 loop do
 
@@ -14,6 +15,7 @@ loop do
   while (line = socket.gets) && (line != "\r\n")
     http_request += line
   end
+  # STDERR.puts http_request
 
   # Grab the security key from the headers. If one isn't present, close the connection.
   if matches = http_request.match(/^Sec-WebSocket-Key: (\S+)/)
@@ -26,7 +28,7 @@ loop do
   end
 
 
-  response_key = Digest::SHA1.base64digest([websocket_key, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"].join)
+  response_key = Digest::SHA1.base64digest([websocket_key,magic_string].join)
   STDERR.puts "Responding to handshake with key: #{ response_key }"
 
   socket.write <<-eos
@@ -37,7 +39,7 @@ Sec-WebSocket-Accept: #{ response_key }
 
   eos
 
-  STDERR.puts "Handshake completed. Starting to parse the websocket frame."
+STDERR.puts "Handshake completed. Starting to parse the websocket frame."
 
 first_byte = socket.getbyte
 fin = first_byte & 0b10000000
@@ -68,6 +70,15 @@ data = payload_size.times.map{socket.getbyte}
 STDERR.puts "Got masked data: #{ data.inspect }"
 
 unmasked_data = data.each_with_index.map { |byte, i| byte ^ mask[i % 4] }
+
+STDERR.puts "Unmasked Data is: #{unmasked_data.pack('C*').force_encoding('utf-8').inspect}"
+
+
+response = "Loud and clear!"
+STDERR.puts "Sending response: #{ response.inspect }"
+output = [0b10000001, response.size, response]
+
+socket.write output.pack("CCA#{ response.size }")
 
 socket.close
 end
